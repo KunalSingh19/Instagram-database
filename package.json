@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "instagram-url-direct": "^2.0.7",
+    "p-limit": "^7.1.1",
+    "sanitize-filename": "^1.6.3"
+  }
+}
