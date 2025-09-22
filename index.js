@@ -15,7 +15,7 @@ const DATA_FILE = "reelsData.json";
 const HISTORY_FILE = "history.json";
 const BROKEN_LINKS_FILE = "brokenLinks.json";
 const FETCH_ERRORS_FILE = "fetchErrors.json";
-const MAX_BATCH_SIZE = 300;
+const MAX_BATCH_SIZE = 1000;
 const MAX_TOTAL_ATTEMPTS = 500;
 const FETCH_CONCURRENCY = 5;
 const DOWNLOAD_CONCURRENCY = 3;
@@ -327,3 +327,4 @@ const ascending = process.argv[3] === "asc";
     console.log("No data fetched, skipping video downloads.");
   }
 })();
+
