@@ -1,7 +1,7 @@
 # Instagram-database
 Here is a simple script to create a database of instagram scraped video uses third part software so may hide some content even normal ones. Need public ip doesnt work on loud most of the time
 
-Example: https://mega.nz/folder/zKRhURTJ#o2JwzechZ7gRzmAru_yh2g
+Example: https://mega.nz/folder/3O4GzSBT#o2JwzechZ7gRzmAru_yh2g
 
 ---
 
