@@ -83,4 +83,4 @@ node index.js reels.txt asc
 
 ---
 
-Feel free to customize this template with your script filename and any additional instructions!
+Feel free to customize this repo with your scripts and files!
