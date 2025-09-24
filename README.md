@@ -38,17 +38,6 @@ https://www.instagram.com/reel/YYYYYYYYYYY/
 
 ---
 
-# filter
-
-run
-```
-python filter.py
-```
-
-it filters and remove expired url and replace url path with url path
-
-
----
 ## Usage
 
 Run the script with:
@@ -75,6 +64,18 @@ node index.js reels.txt asc
 - `fetchErrors.json`: Logs URLs that failed to fetch.
 - `brokenLinks.json`: Logs URLs with broken or missing media.
 - `videos/`: Directory where downloaded videos are saved.
+
+---
+
+# filter
+
+run
+```
+python filter.py
+```
+
+it filters and remove expired url and replace url path with url path
+
 
 ---
 
