@@ -38,6 +38,17 @@ https://www.instagram.com/reel/YYYYYYYYYYY/
 
 ---
 
+# filter
+
+run
+```
+python filter.py
+```
+
+it filters and remove expired url and replace url path with url path
+
+
+---
 ## Usage
 
 Run the script with:
