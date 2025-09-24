@@ -67,7 +67,7 @@ node index.js reels.txt asc
 
 ---
 
-# filter && link removal from json
+# filter & link removal from json
 
 run for filter
 ```
