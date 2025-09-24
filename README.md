@@ -67,14 +67,25 @@ node index.js reels.txt asc
 
 ---
 
-# filter
+# filter && link removal from json
 
-run
+run for filter
 ```
-python filter.py
+python utils/filter.py
 ```
 
 it filters and remove expired url and replace url path with url path
+
+run removal
+file for example file name: www.instagram.com_reel_C_KTAsVtQUU_.mp4
+
+convert its into www.instagram.com/reel/C_KTAsVtQUU/
+just replace _ in three place and remove .mp4 ext and add https:// 
+
+run remove.py for more info
+```
+python utils/remove.py
+```
 
 
 ---
