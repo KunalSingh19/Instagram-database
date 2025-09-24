@@ -3,17 +3,23 @@ import fs from "fs";
 import { instagramGetUrl } from "instagram-url-direct";
 import path from "path";
 import { fileURLToPath } from "url";
+import https from "https";
+import http from "http";
 import pLimit from "p-limit";
+import sanitize from "sanitize-filename";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DATA_FILE = "reelsData.json";
 const HISTORY_FILE = "history.json";
+const BROKEN_LINKS_FILE = "brokenLinks.json";
 const FETCH_ERRORS_FILE = "fetchErrors.json";
 const MAX_BATCH_SIZE = 1000;
 const MAX_TOTAL_ATTEMPTS = 1500;
 const FETCH_CONCURRENCY = 5;
+const DOWNLOAD_CONCURRENCY = 3;
+const MEDIAS_DIR = "medias";
 
 async function loadJsonFile(filePath, defaultType = "object") {
   try {
@@ -30,6 +36,11 @@ async function loadJsonFile(filePath, defaultType = "object") {
 
 async function saveJsonFile(filePath, data) {
   await fsPromises.writeFile(filePath, JSON.stringify(data, null, 2));
+}
+
+function extractShortcode(url) {
+  const match = url.match(/\/(p|reel)\/([A-Za-z0-9_-]+)/);
+  return match ? match[2] : sanitize(url.replace(/https?:\/\//, "").replace(/[\/?&=]/g, "_").slice(0, 50));
 }
 
 async function fetchReels(inputFile, ascending = false) {
@@ -167,12 +178,192 @@ async function fetchReels(inputFile, ascending = false) {
   }
 }
 
+async function downloadFile(url, outputPath) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(outputPath);
+    const client = url.startsWith("https") ? https : http;
+
+    client
+      .get(url, (response) => {
+        if (response.statusCode !== 200) {
+          file.close();
+          fs.unlink(outputPath, () => {});
+          reject(new Error(`Failed to get '${url}' (${response.statusCode})`));
+          return;
+        }
+
+        response.pipe(file);
+
+        file.on("finish", () => {
+          file.close(resolve);
+        });
+      })
+      .on("error", (err) => {
+        file.close();
+        fs.unlink(outputPath, () => {});
+        reject(err);
+      });
+  });
+}
+
+function getExtensionFromMime(mime) {
+  const map = {
+    // Videos
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+    // Images
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+  };
+  return map[mime] || ".bin";  // Fallback for unknown
+}
+
+async function downloadAllMedias(dataFile = DATA_FILE, mediasDir = MEDIAS_DIR) {
+  try {
+    const content = await fsPromises.readFile(dataFile, "utf-8");
+    const reelsData = JSON.parse(content);
+
+    await fsPromises.mkdir(mediasDir, { recursive: true });
+
+    const brokenLinks = [];
+    let totalCount = 0;
+
+    const limit = pLimit(DOWNLOAD_CONCURRENCY);
+
+    let abortDownload = false;
+
+    const downloadTasks = Object.entries(reelsData).map(([url, reelData]) =>
+      limit(async () => {
+        if (abortDownload) return;
+
+        const shortcode = extractShortcode(url);
+        const postDir = path.join(mediasDir, shortcode);
+        await fsPromises.mkdir(postDir, { recursive: true });
+
+        // Skip if all medias already downloaded
+        if (
+          reelData.local_media_paths &&
+          Array.isArray(reelData.local_media_paths) &&
+          reelData.local_media_paths.every((p) => fs.existsSync(p))
+        ) {
+          console.log(`Skipping already downloaded medias for ${url} (${reelData.media_count || 0} files)`);
+          return;
+        }
+
+        if (
+          typeof reelData !== "object" ||
+          !Array.isArray(reelData.media_details) ||
+          reelData.media_details.length === 0
+        ) {
+          console.warn(`No media details found for ${url}`);
+          brokenLinks.push({ url, reason: "No media details found" });
+          return;
+        }
+
+        const mediaPaths = [];
+        let mediaCount = 0;
+        const postBroken = [];
+
+        for (let i = 0; i < reelData.media_details.length; i++) {
+          const media = reelData.media_details[i];
+          if (!media.url || (media.type !== "video" && media.type !== "image")) {
+            console.warn(`Skipping unsupported media type for ${url}: ${media.type}`);
+            continue;
+          }
+
+          const mimeType = media.mime_type || "";
+          let ext = path.extname(new URL(media.url).pathname);
+          if (!ext && mimeType) {
+            ext = getExtensionFromMime(mimeType);
+          }
+          if (!ext) {
+            ext = ".bin";
+          }
+
+          const fileName = `${i + 1}${ext}`;
+          const outputPath = path.join(postDir, fileName);
+          const relativePath = path.relative(__dirname, outputPath);
+
+          // Skip if this specific file exists
+          if (fs.existsSync(outputPath)) {
+            console.log(`Skipping existing media ${i + 1} for ${url}`);
+            mediaPaths.push(relativePath);
+            continue;
+          }
+
+          try {
+            await downloadFile(media.url, outputPath);
+            console.log(`Downloaded ${media.type} ${i + 1}/${reelData.media_details.length} for ${url} to ${relativePath}`);
+            mediaPaths.push(relativePath);
+            mediaCount++;
+            totalCount++;
+          } catch (err) {
+            console.error(`Failed to download ${media.type} ${i + 1} for ${url}:`, err.message);
+
+            if (err.message.includes("401") || err.message.toLowerCase().includes("unauthorized")) {
+              abortDownload = true;
+              throw new Error(`401 Unauthorized error encountered at URL: ${url}. Stopping download process.`);
+            }
+
+            if (!err.message.includes("(401)")) {
+              postBroken.push({ media_index: i + 1, type: media.type, reason: err.message });
+            } else {
+              console.warn(`Skipping broken record for 401 Unauthorized: ${url} media ${i + 1}`);
+            }
+          }
+        }
+
+        // Update metadata
+        reelData.local_media_paths = mediaPaths;
+        reelData.media_count = mediaCount;
+
+        if (postBroken.length > 0) {
+          brokenLinks.push({ url, shortcode, broken_medias: postBroken });
+        }
+
+        if (mediaCount > 0) {
+          console.log(`Completed ${url}: Downloaded ${mediaCount} new medias to ${postDir}`);
+        }
+      })
+    );
+
+    try {
+      await Promise.all(downloadTasks);
+    } catch (stopError) {
+      console.error(stopError.message);
+      // Save partial data before exiting
+      await saveJsonFile(dataFile, reelsData);
+      if (brokenLinks.length > 0) {
+        await saveJsonFile(BROKEN_LINKS_FILE, brokenLinks);
+        console.log(`Saved ${brokenLinks.length} broken links to '${BROKEN_LINKS_FILE}'.`);
+      }
+      return;
+    }
+
+    await saveJsonFile(dataFile, reelsData);
+
+    if (brokenLinks.length > 0) {
+      await saveJsonFile(BROKEN_LINKS_FILE, brokenLinks);
+      console.log(`Saved ${brokenLinks.length} broken links/medias to '${BROKEN_LINKS_FILE}'.`);
+    }
+
+    console.log(`Downloaded total ${totalCount} new medias across all posts to folder '${mediasDir}'.`);
+  } catch (err) {
+    console.error("Error downloading medias:", err);
+  }
+}
+
 const inputFile = process.argv[2] || "reels.txt";
 const ascending = process.argv[3] === "asc";
 
 (async () => {
   const fetchedData = await fetchReels(inputFile, ascending);
-  if (!fetchedData || Object.keys(fetchedData).length === 0) {
-    console.log("No data fetched.");
+  if (fetchedData && Object.keys(fetchedData).length > 0) {
+    await downloadAllMedias();
+  } else {
+    console.log("No data fetched, skipping media downloads.");
   }
 })();
