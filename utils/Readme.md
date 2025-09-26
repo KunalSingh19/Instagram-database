@@ -22,5 +22,5 @@ python filter.py
 
 # Batch.py
 
-used to seperate and create check points in for managing bulk data create seperate reeldata file with 100 videos and its data each
+used to seperate and create check points in for managing bulk data create seperate reeldata file with 100 videos and its data each in folder
 
