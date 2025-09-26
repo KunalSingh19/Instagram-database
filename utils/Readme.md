@@ -14,6 +14,7 @@ python remove.py <json_file_path> <reel_url>
 Removes 'thumbnail' and Replace video url with local path and drastically minimize the size
 
 Note: Make Sure to change file name accordingly in filter.py
+
 Usage:
 ```
 python filter.py
